@@ -1,2 +1,0 @@
-EXPORTS
-DirectInput8Create=_Z22DirectInput8CreateStubP11HINSTANCE__mRK5_GUIDPPvP8IUnknown@20

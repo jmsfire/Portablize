@@ -1,0 +1,2 @@
+EXPORTS
+GetModuleFileNameExW=_Z24GetModuleFileNameExWStubPvP11HINSTANCE__Pwm@16

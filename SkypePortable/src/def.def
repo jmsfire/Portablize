@@ -1,0 +1,2 @@
+EXPORTS
+SHGetFolderPathW=_Z20SHGetFolderPathWStubP6HWND__iPvmPw@20

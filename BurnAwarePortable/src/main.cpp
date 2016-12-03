@@ -1,0 +1,49 @@
+//BurnAwarePortable
+#define _WIN32_WINNT _WIN32_IE_WINBLUE
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+#ifndef _WIN64
+#define EXPORT //__declspec(dllexport)
+
+static constexpr const DWORD g_dwPathMargin = 15;        //"\burnaware.ini`"
+static wchar_t g_wBuf[MAX_PATH+1];
+
+//-------------------------------------------------------------------------------------------------
+EXPORT HRESULT WINAPI SHGetFolderPathWStub(HWND, int, HANDLE, DWORD, LPWSTR pszPath)
+{
+    const wchar_t *pSrc = g_wBuf;
+    while ((*pszPath++ = *pSrc++));
+    return S_OK;
+}
+
+//-------------------------------------------------------------------------------------------------
+extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID)
+{
+    if (fdwReason == DLL_PROCESS_ATTACH)
+    {
+        const DWORD dwLen = GetModuleFileNameW(nullptr, g_wBuf, MAX_PATH+1);
+        if (dwLen >= 6 && dwLen < MAX_PATH)
+        {
+            wchar_t *pDelim = g_wBuf+dwLen;
+            do
+            {
+                if (*--pDelim == L'\\')
+                    break;
+            } while (pDelim > g_wBuf);
+            if (pDelim >= g_wBuf+4 && pDelim <= g_wBuf+MAX_PATH-g_dwPathMargin && DisableThreadLibraryCalls(hInstDll))
+            {
+                *pDelim = L'\0';
+                return TRUE;
+            }
+        }
+    }
+    return FALSE;
+}
+#else
+//-------------------------------------------------------------------------------------------------
+extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE, DWORD, LPVOID)
+{
+    return FALSE;
+}
+#endif

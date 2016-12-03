@@ -1,0 +1,3 @@
+EXPORTS
+CommandLineToArgvW=_Z22CommandLineToArgvWStubPKwPi
+SHGetSpecialFolderPathW=_Z27SHGetSpecialFolderPathWStubP6HWND__Pwii

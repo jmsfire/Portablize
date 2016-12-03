@@ -1,0 +1,3 @@
+EXPORTS
+GetFocus=_Z12GetFocusStubv@0
+MessageBoxA=_Z15MessageBoxAStubP6HWND__PKcS2_j@16

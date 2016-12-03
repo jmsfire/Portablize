@@ -1,0 +1,2 @@
+EXPORTS
+SHGetSpecialFolderPathA=_Z27SHGetSpecialFolderPathAStubP6HWND__Pcii@16

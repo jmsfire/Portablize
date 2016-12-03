@@ -1,0 +1,7 @@
+EXPORTS
+RegCloseKey=_Z15RegCloseKeyStubP6HKEY__@4
+RegCreateKeyA=_Z17RegCreateKeyAStubP6HKEY__PKcPS0_@12
+RegOpenKeyExA=_Z17RegOpenKeyExAStubP6HKEY__PKcmmPS0_@20
+RegQueryValueExA=_Z20RegQueryValueExAStubP6HKEY__PKcPmS3_PcS3_@24
+RegSetValueA=_Z16RegSetValueAStubP6HKEY__PKcmS2_m@20
+RegSetValueExA=_Z18RegSetValueExAStubP6HKEY__PKcmmPKhm@24
