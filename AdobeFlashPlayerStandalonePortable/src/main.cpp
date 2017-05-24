@@ -51,10 +51,14 @@ EXPORT WINBOOL WINAPI CryptReleaseContextStub(HCRYPTPROV hProv, DWORD dwFlags)
 {return CryptReleaseContext(hProv, dwFlags);}
 EXPORT WINBOOL WINAPI CryptSetKeyParamStub(HCRYPTKEY hKey, DWORD dwParam, CONST BYTE *pbData, DWORD dwFlags)
 {return CryptSetKeyParam(hKey, dwParam, pbData, dwFlags);}
+EXPORT WINBOOL WINAPI DeregisterEventSourceStub(HANDLE hEventLog)
+{return DeregisterEventSource(hEventLog);}
 EXPORT LONG WINAPI RegCloseKeyStub(HKEY hKey)
 {return RegCloseKey(hKey);}
 EXPORT LONG WINAPI RegCreateKeyExStub(HKEY, LPCVOID, DWORD, LPSTR, DWORD, REGSAM, LPSECURITY_ATTRIBUTES, PHKEY, LPDWORD)
 {return ERROR_ACCESS_DENIED;}
+EXPORT HANDLE WINAPI RegisterEventSourceAStub(LPCSTR lpUNCServerName, LPCSTR lpSourceName)
+{return RegisterEventSourceA(lpUNCServerName, lpSourceName);}
 EXPORT LONG WINAPI RegOpenKeyAStub(HKEY, LPCSTR, PHKEY)
 {return ERROR_ACCESS_DENIED;}
 EXPORT LONG WINAPI RegOpenKeyExStub(HKEY, LPCVOID, DWORD, REGSAM, PHKEY)
@@ -63,6 +67,8 @@ EXPORT LONG WINAPI RegQueryValueExStub(HKEY, LPCVOID, LPDWORD, LPDWORD, LPBYTE, 
 {return ERROR_ACCESS_DENIED;}
 EXPORT LONG WINAPI RegSetValueExStub(HKEY, LPCVOID, DWORD, DWORD, CONST BYTE*, DWORD)
 {return ERROR_ACCESS_DENIED;}
+EXPORT WINBOOL WINAPI ReportEventAStub(HANDLE hEventLog, WORD wType, WORD wCategory, DWORD dwEventID, PSID lpUserSid, WORD wNumStrings, DWORD dwDataSize, LPCSTR *lpStrings, LPVOID lpRawData)
+{return ReportEventA(hEventLog, wType, wCategory, dwEventID, lpUserSid, wNumStrings, dwDataSize, lpStrings, lpRawData);}
 
 //-------------------------------------------------------------------------------------------------
 extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID)

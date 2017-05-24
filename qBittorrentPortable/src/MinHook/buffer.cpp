@@ -1,7 +1,4 @@
-﻿#define STRICT
-#define NOMINMAX
-#define _WIN32_WINNT 0x0501
-#include <windows.h>
+﻿#include <windows.h>
 #include "buffer.h"
 
 // Size of each memory block. (= page size of VirtualAlloc)
@@ -37,12 +34,12 @@ typedef struct _MEMORY_BLOCK
 //-------------------------------------------------------------------------
 
 // First element of the memory block list.
-PMEMORY_BLOCK g_pMemoryBlocks;
+static PMEMORY_BLOCK g_pMemoryBlocks;
 
 //-------------------------------------------------------------------------
 //VOID InitializeBuffer(VOID)
 //{
-//    // Nothing to do for now.
+    // Nothing to do for now.
 //}
 
 //-------------------------------------------------------------------------
@@ -60,12 +57,12 @@ VOID UninitializeBuffer(VOID)
 }
 
 //-------------------------------------------------------------------------
-#ifdef _M_X64
+#if defined(_M_X64) || defined(__x86_64__)
 static LPVOID FindPrevFreeRegion(LPVOID pAddress, LPVOID pMinAddr, DWORD dwAllocationGranularity)
 {
     ULONG_PTR tryAddr = (ULONG_PTR)pAddress;
 
-    // Round down to the next allocation granularity.
+    // Round down to the allocation granularity.
     tryAddr -= tryAddr % dwAllocationGranularity;
 
     // Start from the previous allocation granularity multiply.
@@ -74,7 +71,7 @@ static LPVOID FindPrevFreeRegion(LPVOID pAddress, LPVOID pMinAddr, DWORD dwAlloc
     while (tryAddr >= (ULONG_PTR)pMinAddr)
     {
         MEMORY_BASIC_INFORMATION mbi;
-        if (VirtualQuery((LPVOID)tryAddr, &mbi, sizeof(MEMORY_BASIC_INFORMATION)) == 0)
+        if (VirtualQuery((LPVOID)tryAddr, &mbi, sizeof(mbi)) == 0)
             break;
 
         if (mbi.State == MEM_FREE)
@@ -91,12 +88,12 @@ static LPVOID FindPrevFreeRegion(LPVOID pAddress, LPVOID pMinAddr, DWORD dwAlloc
 #endif
 
 //-------------------------------------------------------------------------
-#ifdef _M_X64
+#if defined(_M_X64) || defined(__x86_64__)
 static LPVOID FindNextFreeRegion(LPVOID pAddress, LPVOID pMaxAddr, DWORD dwAllocationGranularity)
 {
     ULONG_PTR tryAddr = (ULONG_PTR)pAddress;
 
-    // Round down to the next allocation granularity.
+    // Round down to the allocation granularity.
     tryAddr -= tryAddr % dwAllocationGranularity;
 
     // Start from the next allocation granularity multiply.
@@ -105,7 +102,7 @@ static LPVOID FindNextFreeRegion(LPVOID pAddress, LPVOID pMaxAddr, DWORD dwAlloc
     while (tryAddr <= (ULONG_PTR)pMaxAddr)
     {
         MEMORY_BASIC_INFORMATION mbi;
-        if (VirtualQuery((LPVOID)tryAddr, &mbi, sizeof(MEMORY_BASIC_INFORMATION)) == 0)
+        if (VirtualQuery((LPVOID)tryAddr, &mbi, sizeof(mbi)) == 0)
             break;
 
         if (mbi.State == MEM_FREE)
@@ -123,17 +120,32 @@ static LPVOID FindNextFreeRegion(LPVOID pAddress, LPVOID pMaxAddr, DWORD dwAlloc
 #endif
 
 //-------------------------------------------------------------------------
-static PMEMORY_BLOCK GetMemoryBlock(LPVOID pOrigin, const LPVOID g_pMinimumApplicationAddress, const LPVOID g_pMaximumApplicationAddress, const DWORD g_dwAllocationGranularity)
+static PMEMORY_BLOCK GetMemoryBlock(LPVOID pOrigin)
 {
     PMEMORY_BLOCK pBlock;
-#ifdef _M_X64
+#if defined(_M_X64) || defined(__x86_64__)
     ULONG_PTR minAddr;
     ULONG_PTR maxAddr;
 
-    //SYSTEM_INFO si;
-    //GetSystemInfo(&si);
-    minAddr = (ULONG_PTR)g_pMinimumApplicationAddress;//(ULONG_PTR)si.lpMinimumApplicationAddress;
-    maxAddr = (ULONG_PTR)g_pMaximumApplicationAddress;//(ULONG_PTR)si.lpMaximumApplicationAddress;
+    typedef struct _SYSTEM_INFO_EX
+    {
+        DWORD dwAllocationGranularity;
+        LPVOID lpMinimumApplicationAddress;
+        LPVOID lpMaximumApplicationAddress;
+    } SYSTEM_INFO_EX;
+
+    static SYSTEM_INFO_EX si;
+    if (si.dwAllocationGranularity == 0)
+    {
+        SYSTEM_INFO si0;
+        GetSystemInfo(&si0);
+        si.dwAllocationGranularity = si0.dwAllocationGranularity;
+        si.lpMinimumApplicationAddress = si0.lpMinimumApplicationAddress;
+        si.lpMaximumApplicationAddress = si0.lpMaximumApplicationAddress;
+    }
+
+    minAddr = (ULONG_PTR)si.lpMinimumApplicationAddress;
+    maxAddr = (ULONG_PTR)si.lpMaximumApplicationAddress;
 
     // pOrigin ± 512MB
     if ((ULONG_PTR)pOrigin > MAX_MEMORY_RANGE && minAddr < (ULONG_PTR)pOrigin - MAX_MEMORY_RANGE)
@@ -149,7 +161,7 @@ static PMEMORY_BLOCK GetMemoryBlock(LPVOID pOrigin, const LPVOID g_pMinimumAppli
     // Look the registered blocks for a reachable one.
     for (pBlock = g_pMemoryBlocks; pBlock != NULL; pBlock = pBlock->pNext)
     {
-#ifdef _M_X64
+#if defined(_M_X64) || defined(__x86_64__)
         // Ignore the blocks too far.
         if ((ULONG_PTR)pBlock < minAddr || (ULONG_PTR)pBlock >= maxAddr)
             continue;
@@ -159,13 +171,13 @@ static PMEMORY_BLOCK GetMemoryBlock(LPVOID pOrigin, const LPVOID g_pMinimumAppli
             return pBlock;
     }
 
-#ifdef _M_X64
+#if defined(_M_X64) || defined(__x86_64__)
     // Alloc a new block above if not found.
     {
         LPVOID pAlloc = pOrigin;
         while ((ULONG_PTR)pAlloc >= minAddr)
         {
-            pAlloc = FindPrevFreeRegion(pAlloc, (LPVOID)minAddr, g_dwAllocationGranularity);//si.dwAllocationGranularity);
+            pAlloc = FindPrevFreeRegion(pAlloc, (LPVOID)minAddr, si.dwAllocationGranularity);
             if (pAlloc == NULL)
                 break;
 
@@ -182,7 +194,7 @@ static PMEMORY_BLOCK GetMemoryBlock(LPVOID pOrigin, const LPVOID g_pMinimumAppli
         LPVOID pAlloc = pOrigin;
         while ((ULONG_PTR)pAlloc <= maxAddr)
         {
-            pAlloc = FindNextFreeRegion(pAlloc, (LPVOID)maxAddr, g_dwAllocationGranularity);//si.dwAllocationGranularity);
+            pAlloc = FindNextFreeRegion(pAlloc, (LPVOID)maxAddr, si.dwAllocationGranularity);
             if (pAlloc == NULL)
                 break;
 
@@ -217,16 +229,13 @@ static PMEMORY_BLOCK GetMemoryBlock(LPVOID pOrigin, const LPVOID g_pMinimumAppli
 
     return pBlock;
     static_cast<void>(pOrigin);
-    static_cast<void>(g_pMinimumApplicationAddress);
-    static_cast<void>(g_pMaximumApplicationAddress);
-    static_cast<void>(g_dwAllocationGranularity);
 }
 
 //-------------------------------------------------------------------------
-LPVOID AllocateBuffer(LPVOID pOrigin, const LPVOID pMinimumApplicationAddress, const LPVOID pMaximumApplicationAddress, const DWORD dwAllocationGranularity)
+LPVOID AllocateBuffer(LPVOID pOrigin)
 {
     PMEMORY_SLOT  pSlot;
-    PMEMORY_BLOCK pBlock = GetMemoryBlock(pOrigin, pMinimumApplicationAddress, pMaximumApplicationAddress, dwAllocationGranularity);
+    PMEMORY_BLOCK pBlock = GetMemoryBlock(pOrigin);
     if (pBlock == NULL)
         return NULL;
 
@@ -255,7 +264,7 @@ VOID FreeBuffer(LPVOID pBuffer)
             PMEMORY_SLOT pSlot = (PMEMORY_SLOT)pBuffer;
 #ifdef _DEBUG
             // Clear the released slot for debugging.
-            memset(pSlot, 0x00, sizeof(MEMORY_SLOT));
+            memset(pSlot, 0x00, sizeof(*pSlot));
 #endif
             // Restore the released slot to the list.
             pSlot->pNext = pBlock->pFree;
@@ -285,7 +294,7 @@ VOID FreeBuffer(LPVOID pBuffer)
 BOOL IsExecutableAddress(LPVOID pAddress)
 {
     MEMORY_BASIC_INFORMATION mi;
-    VirtualQuery(pAddress, &mi, sizeof(MEMORY_BASIC_INFORMATION));
+    VirtualQuery(pAddress, &mi, sizeof(mi));
 
     return (mi.State == MEM_COMMIT && (mi.Protect & PAGE_EXECUTE_FLAGS));
 }

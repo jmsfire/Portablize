@@ -60,7 +60,9 @@ static LONG WINAPI RegOpenKeyExAStub(HKEY, LPCSTR, DWORD, REGSAM, PHKEY)
 
 static LONG WINAPI RegOpenKeyExWStub(HKEY hKey, LPCWSTR lpSubKey, DWORD, REGSAM, PHKEY phkResult)
 {
-    if (hKey == HKEY_CURRENT_USER && lpSubKey && FCompareMemoryW(lpSubKey, L"Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Attachments"))
+    if (hKey == HKEY_CURRENT_USER && lpSubKey &&
+            (FCompareMemoryW(lpSubKey, L"Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Attachments") ||
+             FCompareMemoryW(lpSubKey, L"Software\\Thunderbird\\Crash Reporter")))
     {
         *phkResult = reinterpret_cast<HKEY>(g_iKeyDummy);
         return ERROR_SUCCESS;
@@ -68,19 +70,27 @@ static LONG WINAPI RegOpenKeyExWStub(HKEY hKey, LPCWSTR lpSubKey, DWORD, REGSAM,
     return ERROR_ACCESS_DENIED;
 }
 
-typedef LONG (WINAPI *PRegQueryValueExW)(HKEY hKey,LPCWSTR lpValueName,LPDWORD lpReserved,LPDWORD lpType,LPBYTE lpData,LPDWORD lpcbData);
+typedef LONG (WINAPI *PRegQueryValueExW)(HKEY hKey, LPCWSTR lpValueName, LPDWORD lpReserved, LPDWORD lpType, LPBYTE lpData, LPDWORD lpcbData);
 static PRegQueryValueExW RegQueryValueExWReal;
 static LONG WINAPI RegQueryValueExWStub(HKEY hKey, LPCWSTR lpValueName, LPDWORD lpReserved, LPDWORD lpType, LPBYTE lpData, LPDWORD lpcbData)
 {
-    if (hKey == reinterpret_cast<HKEY>(g_iKeyDummy) && lpValueName && FCompareMemoryW(lpValueName, L"SaveZoneInformation"))
+    if (hKey == reinterpret_cast<HKEY>(g_iKeyDummy))
     {
-        if (lpType)
-            *lpType = REG_DWORD;
-        if (lpData)
-            *static_cast<DWORD*>(static_cast<void*>(lpData)) = 1;
-        if (lpcbData)
-            *lpcbData = sizeof(DWORD);
-        return ERROR_SUCCESS;
+        if (lpValueName && lpData)
+        {
+            DWORD dwData = 1;
+            if (FCompareMemoryW(lpValueName, L"SaveZoneInformation") ||
+                    (dwData = 0, FCompareMemoryW(lpValueName, L"SubmitCrashReport")))
+            {
+                if (lpType)
+                    *lpType = REG_DWORD;
+                *static_cast<DWORD*>(static_cast<void*>(lpData)) = dwData;
+                if (lpcbData)
+                    *lpcbData = sizeof(DWORD);
+                return ERROR_SUCCESS;
+            }
+        }
+        return ERROR_ACCESS_DENIED;
     }
     return RegQueryValueExWReal(hKey, lpValueName, lpReserved, lpType, lpData, lpcbData);
 }
@@ -151,10 +161,8 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
                     break;
             } while (pDelim > g_wBuf);
             if (pDelim >= g_wBuf+4 && pDelim <= g_wBuf+MAX_PATH-g_dwPathMargin)
-            {
 #ifdef _WIN64
                 if (MH_Initialize() == MH_OK)
-                {
 #endif
                     if (
                             FCreateHook(SHGetSpecialFolderLocation, SHGetSpecialFolderLocationStub) &&
@@ -175,10 +183,6 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
                                 *pDelim = L'\0';
                                 return TRUE;
                             }
-#ifdef _WIN64
-                }
-#endif
-            }
         }
     }
 #ifdef _WIN64

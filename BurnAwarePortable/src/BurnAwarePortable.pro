@@ -12,7 +12,7 @@ QMAKE_LFLAGS += -eDllEntryPoint
 } else {
 QMAKE_LFLAGS += -e_DllEntryPoint
 
-LIBS += -lkernel32
+LIBS += -lkernel32 -ladvapi32
 
 DEF_FILE = def.def
 }

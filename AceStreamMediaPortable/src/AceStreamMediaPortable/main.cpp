@@ -26,17 +26,18 @@ EXPORT int WINAPI MessageBoxAStub(HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UI
     return MessageBoxA(hWnd, lpText, lpCaption, uType);
 }
 
+//-------------------------------------------------------------------------------------------------
+static LONG WINAPI RegOpenKeyExStub(HKEY, LPCVOID, DWORD, REGSAM, PHKEY)
+{
+    return ERROR_ACCESS_DENIED;
+}
+
 static LONG WINAPI RegCreateKeyStub(HKEY, LPCVOID, PHKEY)
 {
     return ERROR_ACCESS_DENIED;
 }
 
 static LONG WINAPI RegCreateKeyExStub(HKEY, LPCVOID, DWORD, LPVOID, DWORD, REGSAM, LPSECURITY_ATTRIBUTES, PHKEY, LPDWORD)
-{
-    return ERROR_ACCESS_DENIED;
-}
-
-static LONG WINAPI RegOpenKeyExStub(HKEY, LPCVOID, DWORD, REGSAM, PHKEY)
 {
     return ERROR_ACCESS_DENIED;
 }
@@ -54,11 +55,22 @@ static int WSAAPI getaddrinfoStub(const char *nodename, const char *servname, co
 static bool FIsBanned(const void *const pSockAddr)
 {
     const u_char *const pOctet = &static_cast<const sockaddr_in*>(pSockAddr)->sin_addr.S_un.S_un_b.s_b1;
-    return (pOctet[0] >= 224 || pOctet[0] == 10 || pOctet[0] == 0 ||
-            (pOctet[0] == 127 && !(pOctet[1] == 0 && pOctet[2] == 0 && pOctet[3] == 1)) ||
-            (pOctet[0] == 192 && pOctet[1] == 168) ||
-            (pOctet[0] == 172 && (pOctet[1] >= 16 && pOctet[1] <= 31)) ||
-            (pOctet[0] == 169 && pOctet[1] == 254));
+    return (*pOctet == 0 ||
+            *pOctet == 10 ||
+            (*pOctet == 100 && (pOctet[1] >= 64 && pOctet[1] <= 127)) ||
+            (*pOctet == 127 && !(pOctet[1] == 0 && pOctet[2] == 0 && pOctet[3] == 1)) ||
+            (*pOctet == 169 && pOctet[1] == 254) ||
+            (*pOctet == 172 && (pOctet[1] >= 16 && pOctet[1] <= 31)) ||
+            (*pOctet == 192 &&
+            ((pOctet[1] == 0 && pOctet[2] == 0) ||
+            (pOctet[1] == 0 && pOctet[2] == 2) ||
+            (pOctet[1] == 88 && pOctet[2] == 99) ||
+            pOctet[1] == 168)) ||
+            (*pOctet == 198 &&
+            ((pOctet[1] >= 18 && pOctet[1] <= 19) ||
+            (pOctet[1] == 51 && pOctet[2] == 100))) ||
+            (*pOctet == 203 && pOctet[1] == 0 && pOctet[2] == 113) ||
+            *pOctet >= 224);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -127,7 +139,7 @@ static inline bool FCreateHook(T1 *const pTarget, T2 *const pDetour, T1 **const 
 {return FPatch(reinterpret_cast<BYTE*>(pTarget), reinterpret_cast<size_t>(pDetour), reinterpret_cast<void**>(ppOriginal));}
 
 //-------------------------------------------------------------------------------------------------
-extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE, DWORD fdwReason, LPVOID)
+extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID)
 {
     if (fdwReason == DLL_PROCESS_ATTACH)
     {
@@ -146,13 +158,14 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE, DWORD fdwReason, LPVOID)
                     FCreateHook(getaddrinfo, getaddrinfoStub, &getaddrinfoReal) &&
                     FCreateHook(sendto, sendtoStub, &sendtoReal) &&
                     FCreateHook(connect, connectStub, &connectReal) &&
+                    FCreateHook(RegOpenKeyExA, RegOpenKeyExStub) &&
+                    FCreateHook(RegOpenKeyExW, RegOpenKeyExStub) &&
                     FCreateHook(RegCreateKeyA, RegCreateKeyStub) &&
                     FCreateHook(RegCreateKeyW, RegCreateKeyStub) &&
                     FCreateHook(RegCreateKeyExA, RegCreateKeyExStub) &&
                     FCreateHook(RegCreateKeyExW, RegCreateKeyExStub) &&
-                    FCreateHook(RegOpenKeyExA, RegOpenKeyExStub) &&
-                    FCreateHook(RegOpenKeyExW, RegOpenKeyExStub) &&
-                    FCreateHook(CreateProcessA, CreateProcessAStub, &CreateProcessAReal))
+                    FCreateHook(CreateProcessA, CreateProcessAStub, &CreateProcessAReal) &&
+                    DisableThreadLibraryCalls(hInstDll))
                 return TRUE;
         }
     }

@@ -1,10 +1,12 @@
-﻿#ifdef _WIN64
+﻿#ifdef _WIN64//####
 /*
  * Hacker Disassembler Engine 64 C
  * Copyright (c) 2008-2009, Vyacheslav Patkov.
  * All rights reserved.
  *
  */
+
+#if defined(_M_X64) || defined(__x86_64__)
 
 #include "hde.h"
 
@@ -37,7 +39,7 @@
 #define DELTA_OP_ONLY_MEM  0x1d8
 #define DELTA_OP2_ONLY_MEM 0x1e7
 
-const unsigned char hde64_table[] = {
+constexpr const unsigned char hde64_table[] = {
   0xa5,0xaa,0xa5,0xb8,0xa5,0xaa,0xa5,0xaa,0xa5,0xb8,0xa5,0xb8,0xa5,0xb8,0xa5,
   0xb8,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xac,0xc0,0xcc,0xc0,0xa1,0xa1,
   0xa1,0xa1,0xb1,0xa5,0xa5,0xa6,0xc0,0xc0,0xd7,0xda,0xe0,0xc0,0xe4,0xc0,0xea,
@@ -76,13 +78,12 @@ const unsigned char hde64_table[] = {
   0x00,0xf0,0x02,0x00
 };
 
-static inline void memsetFix(void *_Dst, int _iVal, size_t _Size)
+static inline void memsetFix(void *Dst_, int, size_t Size)
 {
-    char *pDst = (char*)_Dst;
-    while (_Size--)
+    char *pDst = static_cast<char*>(Dst_);
+    while (Size--)
         *pDst++ = '\0';
     return;
-    (void)_iVal;
 }
 
 unsigned int hde64_disasm(const void *code, hde64s *hs)
@@ -411,13 +412,16 @@ unsigned int hde64_disasm(const void *code, hde64s *hs)
     return (unsigned int)hs->len;
 }
 
-#else
+#endif // defined(_M_X64) || defined(__x86_64__)
+#else//####
 /*
  * Hacker Disassembler Engine 32 C
  * Copyright (c) 2008-2009, Vyacheslav Patkov.
  * All rights reserved.
  *
  */
+
+#if defined(_M_IX86) || defined(__i386__)
 
 #include "hde.h"
 
@@ -450,7 +454,7 @@ unsigned int hde64_disasm(const void *code, hde64s *hs)
 #define DELTA_OP_ONLY_MEM  0x1cb
 #define DELTA_OP2_ONLY_MEM 0x1da
 
-const unsigned char hde32_table[] = {
+constexpr const unsigned char hde32_table[] = {
   0xa3,0xa8,0xa3,0xa8,0xa3,0xa8,0xa3,0xa8,0xa3,0xa8,0xa3,0xa8,0xa3,0xa8,0xa3,
   0xa8,0xaa,0xaa,0xaa,0xaa,0xaa,0xaa,0xaa,0xaa,0xac,0xaa,0xb2,0xaa,0x9f,0x9f,
   0x9f,0x9f,0xb5,0xa3,0xa3,0xa4,0xaa,0xaa,0xba,0xaa,0x96,0xaa,0xa8,0xaa,0xc3,
@@ -488,13 +492,12 @@ const unsigned char hde32_table[] = {
   0xe7,0x08,0x00,0xf0,0x02,0x00
 };
 
-static inline void memsetFix(void *_Dst, int _iVal, size_t _Size)
+static inline void memsetFix(void *Dst_, int, size_t Size)
 {
-    char *pDst = (char*)_Dst;
-    while (_Size--)
+    char *pDst = static_cast<char*>(Dst_);
+    while (Size--)
         *pDst++ = '\0';
     return;
-    (void)_iVal;
 }
 
 unsigned int hde32_disasm(const void *code, hde32s *hs)
@@ -811,4 +814,7 @@ unsigned int hde32_disasm(const void *code, hde32s *hs)
 
     return (unsigned int)hs->len;
 }
-#endif
+
+#endif // defined(_M_IX86) || defined(__i386__)
+
+#endif//####

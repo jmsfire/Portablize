@@ -19,17 +19,13 @@ static constexpr const DWORD g_dwTLS_1_1 = 0x0200;
 static constexpr const DWORD g_dwTLS_1_2 = 0x0800;
 static HANDLE g_hProcHeap;
 static wchar_t g_wBuf[MAX_PATH+1];
-static wchar_t *g_pDelim;
-static DWORD g_dwTempPathLen;
-
-struct TagIpfilter
+struct SIpfilter
 {
     u_long iIp1;
     u_long iIp2;
 };
-static TagIpfilter *g_pTgIpFilter,
-*g_pTgIpFilterEnd;
-
+static SIpfilter *g_pSIpFilter,
+*g_pSIpFilterEnd;
 static DWORD g_dwHostsNumLines;
 static size_t *g_szHostsLengths;
 static char *g_cHostsFile;
@@ -37,7 +33,6 @@ static wchar_t *g_wHostsFile;
 static char **g_cHostsLines;
 static wchar_t **g_wHostsLines;
 static bool g_bIsHostsBlackList;
-
 static char **g_cLogDomains;
 static wchar_t **g_wLogDomains;
 static DWORD g_dwLogCurrentA,
@@ -74,10 +69,10 @@ static inline bool FCompareMemoryW(const wchar_t *pBuf1, const wchar_t *pBuf2)
     return *pBuf1 == *pBuf2;
 }
 
-static inline bool FCompareMemoryW(const wchar_t *pBuf1, const wchar_t *pBuf2, DWORD dwSize)
+static inline bool FIsStartWithW(const wchar_t *pFullStr, const wchar_t *pBeginStr)
 {
-    while (dwSize--)
-        if (*pBuf1++ != *pBuf2++)
+    while (*pBeginStr)
+        if (*pFullStr++ != *pBeginStr++)
             return false;
     return true;
 }
@@ -110,6 +105,7 @@ EXPORT HRESULT WINAPI SHGetFolderPathWStub(HWND, int, HANDLE, DWORD, LPWSTR pszP
     return S_OK;
 }
 
+//-------------------------------------------------------------------------------------------------
 static WINBOOL WINAPI SHGetSpecialFolderPathWStub(HWND, LPWSTR pszPath, int, WINBOOL)
 {
     FCopyMemoryW(pszPath, g_wBuf);
@@ -123,10 +119,11 @@ static HRESULT WINAPI SHGetSpecialFolderLocationStub(HWND, int, PIDLIST_ABSOLUTE
 
 static DWORD WINAPI GetTempPathWStub(DWORD, LPWSTR lpBuffer)
 {
-    *g_pDelim = L'\\';
-    FCopyMemoryW(lpBuffer, g_wBuf);
-    *g_pDelim = L'\0';
-    return g_dwTempPathLen;
+    const wchar_t *pSrc = g_wBuf;
+    while ((*lpBuffer++ = *pSrc++));
+    lpBuffer[-1] = L'\\';
+    *lpBuffer = L'\0';
+    return pSrc-g_wBuf;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -134,9 +131,9 @@ typedef HINSTANCE (WINAPI *PShellExecuteW)(HWND hWnd, LPCWSTR lpOperation, LPCWS
 static PShellExecuteW ShellExecuteWReal;
 static HINSTANCE WINAPI ShellExecuteWStub(HWND hWnd, LPCWSTR lpOperation, LPCWSTR lpFile, LPCWSTR lpParameters, LPCWSTR lpDirectory, INT nShowCmd)
 {
-    if (lpFile && FCompareMemoryW(lpFile, L"skypecheck:", 11))
-        return reinterpret_cast<HINSTANCE>(ERROR_FILE_NOT_FOUND);
-    return ShellExecuteWReal(hWnd, lpOperation, lpFile, lpParameters, lpDirectory, nShowCmd);
+    return (lpFile && FIsStartWithW(lpFile, L"skypecheck:")) ?
+                reinterpret_cast<HINSTANCE>(ERROR_FILE_NOT_FOUND) :
+                ShellExecuteWReal(hWnd, lpOperation, lpFile, lpParameters, lpDirectory, nShowCmd);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -301,7 +298,7 @@ static bool FIsBanned(const void *const pSockAddr)
 {
     u_long iIp = static_cast<const sockaddr_in*>(pSockAddr)->sin_addr.S_un.S_addr;
     iIp = (iIp << 24) | ((iIp & 0xFF00) << 8) | ((iIp >> 8) & 0xFF00) | (iIp >> 24);
-    for (TagIpfilter *pIt = g_pTgIpFilter; pIt < g_pTgIpFilterEnd; ++pIt)
+    for (SIpfilter *pIt = g_pSIpFilter; pIt < g_pSIpFilterEnd; ++pIt)
         if (iIp >= pIt->iIp1 && iIp <= pIt->iIp2)
             return true;
     return false;
@@ -420,7 +417,7 @@ static bool FIsArgvOk()
                             if (FCompareMemoryW(argv[i], L"/secondary"))
                             {
                                 for (i = 1; i < argc; ++i)
-                                    if (FCompareMemoryW(argv[i], L"/datapath:", 10))
+                                    if (FIsStartWithW(argv[i], L"/datapath:"))
                                     {
                                         bOk = true;
                                         break;
@@ -437,7 +434,7 @@ static bool FIsArgvOk()
 }
 
 //-------------------------------------------------------------------------------------------------
-static bool FFillEntry(const char *const cRow, TagIpfilter *const tgIpfilter)
+static bool FFillEntry(const char *const cRow, SIpfilter *const pSIpfilter)
 {
     if (
             cRow[ 0] >= '0' && cRow[ 0] <= '2' &&
@@ -484,8 +481,8 @@ static bool FFillEntry(const char *const cRow, TagIpfilter *const tgIpfilter)
                 iOctet2D = (cRow[28]-'0')*100 + (cRow[29]-'0')*10 + (cRow[30]-'0');
         if (iOctet1A <= 255 && iOctet1B <= 255 && iOctet1C <= 255 && iOctet1D <= 255 &&
                 iOctet2A <= 255 && iOctet2B <= 255 && iOctet2C <= 255 && iOctet2D <= 255 &&
-                (tgIpfilter->iIp1 = (iOctet1A << 24) | (iOctet1B << 16) | (iOctet1C << 8) | iOctet1D) <=
-                (tgIpfilter->iIp2 = (iOctet2A << 24) | (iOctet2B << 16) | (iOctet2C << 8) | iOctet2D))
+                (pSIpfilter->iIp1 = (iOctet1A << 24) | (iOctet1B << 16) | (iOctet1C << 8) | iOctet1D) <=
+                (pSIpfilter->iIp2 = (iOctet2A << 24) | (iOctet2B << 16) | (iOctet2C << 8) | iOctet2D))
             return true;
     }
     return false;
@@ -525,19 +522,20 @@ static inline bool FCreateHook(T1 *const pTarget, T2 *const pDetour, T1 **const 
 //-------------------------------------------------------------------------------------------------
 extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID)
 {
+    static wchar_t *pDelim;
     static BYTE btGetTempPathW[g_dwPatchSize];
     if (fdwReason == DLL_PROCESS_ATTACH)
     {
         DWORD dwTemp = GetModuleFileNameW(nullptr, g_wBuf, MAX_PATH+1);
         if (dwTemp >= 6 && dwTemp < MAX_PATH)
         {
-            g_pDelim = g_wBuf+dwTemp;
+            pDelim = g_wBuf+dwTemp;
             do
             {
-                if (*--g_pDelim == L'\\')
+                if (*--pDelim == L'\\')
                     break;
-            } while (g_pDelim > g_wBuf);
-            if (g_pDelim >= g_wBuf+4 && g_pDelim <= g_wBuf+MAX_PATH-g_dwPathMargin)
+            } while (pDelim > g_wBuf);
+            if (pDelim >= g_wBuf+4 && pDelim <= g_wBuf+MAX_PATH-g_dwPathMargin)
             {
                 const char *cError = nullptr;
                 if ((g_hProcHeap = GetProcessHeap()))
@@ -547,7 +545,7 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
                         LARGE_INTEGER iFileSize;
 
                         //Ipfilter.cfg-----------------------------------------------------------------
-                        FCopyMemoryW(g_pDelim+1, L"ipfilter.cfg");
+                        FCopyMemoryW(pDelim+1, L"ipfilter.cfg");
                         HANDLE hFile = CreateFileW(g_wBuf, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
                         if (hFile != INVALID_HANDLE_VALUE)
                         {
@@ -561,11 +559,11 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
                                     if (dwTemp)
                                     {
                                         dwTemp = iFileSize.LowPart/32;
-                                        if ((g_pTgIpFilter = static_cast<TagIpfilter*>(HeapAlloc(g_hProcHeap, HEAP_NO_SERIALIZE, dwTemp*sizeof(TagIpfilter)))))
+                                        if ((g_pSIpFilter = static_cast<SIpfilter*>(HeapAlloc(g_hProcHeap, HEAP_NO_SERIALIZE, dwTemp*sizeof(SIpfilter)))))
                                         {
-                                            g_pTgIpFilterEnd = g_pTgIpFilter + dwTemp;
+                                            g_pSIpFilterEnd = g_pSIpFilter + dwTemp;
                                             const char *cIt = cFile;
-                                            for (TagIpfilter *pIt = g_pTgIpFilter; pIt < g_pTgIpFilterEnd; ++pIt, cIt += 32)
+                                            for (SIpfilter *pIt = g_pSIpFilter; pIt < g_pSIpFilterEnd; ++pIt, cIt += 32)
                                                 if (!FFillEntry(cIt, pIt))
                                                 {
                                                     cError = "Invalid record in ipfilter.cfg";
@@ -597,7 +595,7 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
                         //Hosts.cfg--------------------------------------------------------------------
                         if (!cError)
                         {
-                            FCopyMemoryW(g_pDelim+1, L"hosts.cfg");
+                            FCopyMemoryW(pDelim+1, L"hosts.cfg");
                             hFile = CreateFileW(g_wBuf, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
                             if (hFile != INVALID_HANDLE_VALUE)
                             {
@@ -705,10 +703,11 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
                         //Other------------------------------------------------------------------------
                         if (!cError)
                         {
-                            *g_pDelim = L'\0';
-                            if (SetEnvironmentVariableW(L"USERPROFILE", g_wBuf))
+                            pDelim[1] = L'\0';
+                            if (SetCurrentDirectoryW(g_wBuf))
                             {
-                                if (SetCurrentDirectoryW(g_wBuf))
+                                *pDelim = L'\0';
+                                if (SetEnvironmentVariableW(L"USERPROFILE", g_wBuf))
                                 {
                                     if (
                                             FCreateHook(SHGetFolderPathW, SHGetFolderPathWStub) &&
@@ -729,28 +728,24 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
                                             FCreateHook(InternetOpenW, InternetOpenWStub, &InternetOpenWReal) &&
                                             FCreateHook(InternetConnectA, InternetConnectAStub, &InternetConnectAReal) &&
                                             FCreateHook(InternetConnectW, InternetConnectWStub, &InternetConnectWReal) &&
-                                            ((g_pTgIpFilter == g_pTgIpFilterEnd) ||
+                                            ((g_pSIpFilter == g_pSIpFilterEnd) ||
                                              (FCreateHook(sendto, sendtoStub, &sendtoReal) &&
                                               FCreateHook(connect, connectStub, &connectReal))) &&
                                             (FCopyMemory(btGetTempPathW, reinterpret_cast<BYTE*>(GetTempPathW), g_dwPatchSize),
                                              FCreateHook(GetTempPathW, GetTempPathWStub)))        //kernel32.dll (non-hotpatch)
                                     {
                                         if (DisableThreadLibraryCalls(hInstDll))
-                                        {
-                                            g_dwTempPathLen = g_pDelim-g_wBuf+1;
-                                            g_pDelim[1] = L'\0';        //GetTempPathW ends with a backslash
                                             return TRUE;
-                                        }
                                         cError = "DisableThreadLibraryCalls failed";
                                     }
                                     else
                                         cError = "Setting hooks failed";
                                 }
                                 else
-                                    cError = "SetCurrentDirectoryW failed";
+                                    cError = "SetEnvironmentVariableW failed";
                             }
                             else
-                                cError = "SetEnvironmentVariableW failed";
+                                cError = "SetCurrentDirectoryW failed";
                         }
                     }
                     else
@@ -761,7 +756,7 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
 
                 if (cError)
                 {
-                    FCopyMemoryW(g_pDelim, L"\\log.log");
+                    FCopyMemoryW(pDelim, L"\\log.log");
                     const HANDLE hFile = CreateFileW(g_wBuf, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
                     if (hFile != INVALID_HANDLE_VALUE)
                     {
@@ -772,7 +767,7 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
             }
         }
     }
-    else if (fdwReason == DLL_PROCESS_DETACH && g_pTgIpFilter)
+    else if (fdwReason == DLL_PROCESS_DETACH && g_pSIpFilter)
     {
         if (g_cHostsFile)
         {
@@ -794,12 +789,11 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
                                         if (g_dwLogCurrentA < g_dwMaxDomains)
                                         {
                                             char *cIt;
-                                            const wchar_t *wIt;
                                             bool bAdd = true;
                                             for (DWORD i = 0; i < g_dwLogCurrentA; ++i)
                                             {
                                                 cIt = g_cLogDomains[i];
-                                                wIt = wNew;
+                                                const wchar_t *wIt = wNew;
                                                 while (*cIt == *wIt)
                                                 {
                                                     if (*cIt == '\0')
@@ -823,7 +817,7 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
 
                                     if (g_dwLogCurrentA)
                                     {
-                                        FCopyMemoryW(g_pDelim, L"\\log.log");
+                                        FCopyMemoryW(pDelim, L"\\log.log");
                                         const HANDLE hFile = CreateFileW(g_wBuf, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
                                         if (hFile != INVALID_HANDLE_VALUE)
                                         {
@@ -866,7 +860,7 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
             }
             HeapFree(g_hProcHeap, HEAP_NO_SERIALIZE, g_cHostsFile);
         }
-        HeapFree(g_hProcHeap, HEAP_NO_SERIALIZE, g_pTgIpFilter);
+        HeapFree(g_hProcHeap, HEAP_NO_SERIALIZE, g_pSIpFilter);
     }
     return FALSE;
 }

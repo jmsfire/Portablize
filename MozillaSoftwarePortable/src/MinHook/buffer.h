@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 // Size of each memory slot.
-#ifdef _M_X64
+#if defined(_M_X64) || defined(__x86_64__)
     #define MEMORY_SLOT_SIZE 64
 #else
     #define MEMORY_SLOT_SIZE 32
@@ -9,6 +9,6 @@
 
 VOID   InitializeBuffer(VOID);
 VOID   UninitializeBuffer(VOID);
-LPVOID AllocateBuffer(LPVOID pOrigin, const LPVOID pMinimumApplicationAddress, const LPVOID pMaximumApplicationAddress, const DWORD dwAllocationGranularity);
+LPVOID AllocateBuffer(LPVOID pOrigin);
 VOID   FreeBuffer(LPVOID pBuffer);
 BOOL   IsExecutableAddress(LPVOID pAddress);

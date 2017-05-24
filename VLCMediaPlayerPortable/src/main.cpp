@@ -11,19 +11,6 @@ static constexpr const DWORD g_dwPathMargin = 26;        //"\vlc\vlc-qt-interfac
 static wchar_t g_wBuf[MAX_PATH+1];
 
 //-------------------------------------------------------------------------------------------------
-static LONG WINAPI RegCreateKeyExStub(HKEY, LPCVOID, DWORD, LPWSTR, DWORD, REGSAM, LPSECURITY_ATTRIBUTES, PHKEY, LPDWORD)
-{
-    return ERROR_ACCESS_DENIED;
-}
-
-static WINBOOL WINAPI SHGetSpecialFolderPathWStub(HWND, LPWSTR pszPath, int, WINBOOL)
-{
-    const wchar_t *pSrc = g_wBuf;
-    while ((*pszPath++ = *pSrc++));
-    return TRUE;
-}
-
-//-------------------------------------------------------------------------------------------------
 EXPORT LPWSTR * WINAPI CommandLineToArgvWStub(LPCWSTR lpCmdLine, int *pNumArgs)
 {
     return CommandLineToArgvW(lpCmdLine, pNumArgs);
@@ -34,6 +21,19 @@ EXPORT HRESULT WINAPI SHGetFolderPathWStub(HWND, int, HANDLE, DWORD, LPWSTR pszP
     const wchar_t *pSrc = g_wBuf;
     while ((*pszPath++ = *pSrc++));
     return S_OK;
+}
+
+//-------------------------------------------------------------------------------------------------
+static LONG WINAPI RegCreateKeyExStub(HKEY, LPCVOID, DWORD, LPVOID, DWORD, REGSAM, LPSECURITY_ATTRIBUTES, PHKEY, LPDWORD)
+{
+    return ERROR_ACCESS_DENIED;
+}
+
+static WINBOOL WINAPI SHGetSpecialFolderPathWStub(HWND, LPWSTR pszPath, int, WINBOOL)
+{
+    const wchar_t *pSrc = g_wBuf;
+    while ((*pszPath++ = *pSrc++));
+    return TRUE;
 }
 
 #ifdef _WIN64
@@ -83,10 +83,8 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
                     break;
             } while (pDelim > g_wBuf);
             if (pDelim >= g_wBuf+4 && pDelim <= g_wBuf+MAX_PATH-g_dwPathMargin)
-            {
 #ifdef _WIN64
                 if (MH_Initialize() == MH_OK)
-                {
 #endif
                     if (
                             FCreateHook(SHGetFolderPathW, SHGetFolderPathWStub) &&
@@ -101,10 +99,6 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
                                 *pDelim = L'\0';
                                 return TRUE;
                             }
-#ifdef _WIN64
-                }
-#endif
-            }
         }
     }
 #ifdef _WIN64

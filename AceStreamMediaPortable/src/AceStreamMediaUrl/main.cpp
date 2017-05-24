@@ -15,10 +15,10 @@ static inline void FCopyMemoryW(wchar_t *pDst, const wchar_t *pSrc)
 }
 
 //-------------------------------------------------------------------------------------------------
-static inline bool FCompareMemoryW(const wchar_t *pBuf1, const wchar_t *pBuf2, DWORD dwSize)
+static inline bool FIsStartWithW(const wchar_t *pFullStr, const wchar_t *pBeginStr)
 {
-    while (dwSize--)
-        if (*pBuf1++ != *pBuf2++)
+    while (*pBeginStr)
+        if (*pFullStr++ != *pBeginStr++)
             return false;
     return true;
 }
@@ -92,7 +92,7 @@ void FMain()
                 wchar_t *wItClp = hClipboardText;
                 while (*wItClp == L' ' || *wItClp == L'\t')
                     ++wItClp;
-                if (FCompareMemoryW(wItClp, L"acestream://", 12))
+                if (FIsStartWithW(wItClp, L"acestream://"))
                     wItClp += 12;
 
                 wchar_t *wItId = wId;

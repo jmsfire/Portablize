@@ -20,7 +20,6 @@ HEADERS += \
 $$PWD/MinHook/buffer.h \
 $$PWD/MinHook/hde.h \
 $$PWD/MinHook/trampoline.h
-
 } else {
 QMAKE_LFLAGS += -e_DllEntryPoint
 }

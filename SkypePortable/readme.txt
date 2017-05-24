@@ -1,5 +1,6 @@
 Put shfolder.dll to app folder.
-Checked version: 7.30.x.x
+
+Checked version: 7.3x.x.x
 
 hosts.cfg (ANSI, '\n' (LF) line break, without empty row at end):
 First row: 'W' - whitelist, 'B' - blacklist;

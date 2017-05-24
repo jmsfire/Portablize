@@ -1,6 +1,4 @@
-﻿#define STRICT
-#define _WIN32_WINNT 0x0501
-#include <windows.h>
+﻿#include <windows.h>
 #include <tlhelp32.h>
 #include <limits.h>
 
@@ -8,12 +6,12 @@
 #include "buffer.h"
 #include "trampoline.h"
 
-static inline void memcpyFix(void *_Dst, const void *_Src, size_t _Size)
+static inline void memcpyFix(void *Dst_, const void *Src_, size_t Size)
 {
-    char *pDst = (char*)_Dst;
-    const char *pSrc = (const char*)_Src;
-    while (_Size--)
-        *pDst++ = *pSrc++;
+    char *Dst = static_cast<char*>(Dst_);
+    const char *Src = static_cast<const char*>(Src_);
+    while (Size--)
+        *Dst++ = *Src++;
 }
 
 #ifndef ARRAYSIZE
@@ -47,9 +45,9 @@ typedef struct _HOOK_ENTRY
     LPVOID pTrampoline;         // Address of the trampoline function.
     UINT8  backup[8];           // Original prologue of the target function.
 
-    BOOL   patchAbove  : 1;     // Uses the hot patch area.
-    BOOL   isEnabled   : 1;     // Enabled.
-    BOOL   queueEnable : 1;     // Queued for enabling/disabling when != isEnabled.
+    UINT8  patchAbove  : 1;     // Uses the hot patch area.
+    UINT8  isEnabled   : 1;     // Enabled.
+    UINT8  queueEnable : 1;     // Queued for enabling/disabling when != isEnabled.
 
     UINT   nIP : 4;             // Count of the instruction boundaries.
     UINT8  oldIPs[8];           // Instruction boundaries of the target function.
@@ -69,18 +67,19 @@ typedef struct _FROZEN_THREADS
 //-------------------------------------------------------------------------
 
 // Spin lock flag for EnterSpinLock()/LeaveSpinLock().
-volatile LONG g_isLocked = FALSE;
+//static volatile LONG g_isLocked = FALSE;
 
 // Private heap handle. If not NULL, this library is initialized.
-HANDLE g_hHeap = NULL;
+static HANDLE g_hHeap = nullptr;
 
 // Hook entries.
-struct
+struct HOOK_ENTRIES
 {
     PHOOK_ENTRY pItems;     // Data heap
     UINT        capacity;   // Size of allocated data heap, items
     UINT        size;       // Actual number of data items
-} g_hooks;
+};
+static HOOK_ENTRIES g_hooks;
 
 //-------------------------------------------------------------------------
 // Returns INVALID_HOOK_POS if not found.
@@ -158,7 +157,7 @@ static DWORD_PTR FindOldIP(PHOOK_ENTRY pHook, DWORD_PTR ip)
             return (DWORD_PTR)pHook->pTarget + pHook->oldIPs[i];
     }
 
-#ifdef _M_X64
+#if defined(_M_X64) || defined(__x86_64__)
     // Check relay function.
     if (ip == (DWORD_PTR)pHook->pDetour)
         return (DWORD_PTR)pHook->pTarget;
@@ -187,7 +186,7 @@ static void ProcessThreadIPs(HANDLE hThread, UINT pos, UINT action)
     // move IP to the proper address.
 
     CONTEXT c;
-#ifdef _M_X64
+#if defined(_M_X64) || defined(__x86_64__)
     DWORD64 *pIP = &c.Rip;
 #else
     DWORD   *pIP = &c.Eip;
@@ -211,20 +210,20 @@ static void ProcessThreadIPs(HANDLE hThread, UINT pos, UINT action)
     for (; pos < count; ++pos)
     {
         PHOOK_ENTRY pHook = &g_hooks.pItems[pos];
-        BOOL        enable = FALSE;
+        bool        enable;
         DWORD_PTR   ip;
 
         switch (action)
         {
         case ACTION_DISABLE:
-            enable = FALSE;
+            enable = false;
             break;
 
         case ACTION_ENABLE:
-            enable = TRUE;
+            enable = true;
             break;
 
-        case ACTION_APPLY_QUEUED:
+        default: // ACTION_APPLY_QUEUED
             enable = pHook->queueEnable;
             break;
         }
@@ -452,9 +451,6 @@ static VOID LeaveSpinLock(VOID)
 */
 
 //-------------------------------------------------------------------------
-static LPVOID g_pMinimumApplicationAddress;
-static LPVOID g_pMaximumApplicationAddress;
-static DWORD g_dwAllocationGranularity;
 MH_STATUS WINAPI MH_Initialize(VOID)
 {
     MH_STATUS status = MH_OK;
@@ -468,15 +464,7 @@ MH_STATUS WINAPI MH_Initialize(VOID)
         {
             // Initialize the internal function buffer.
             //InitializeBuffer();
-
             g_hCurrentProc = GetCurrentProcess();
-#ifdef _WIN64
-            SYSTEM_INFO si;
-            GetSystemInfo(&si);
-            g_pMinimumApplicationAddress = si.lpMinimumApplicationAddress;
-            g_pMaximumApplicationAddress = si.lpMaximumApplicationAddress;
-            g_dwAllocationGranularity = si.dwAllocationGranularity;
-#endif
         }
         else
         {
@@ -546,13 +534,13 @@ MH_STATUS WINAPI MH_CreateHook(LPVOID pTarget, LPVOID pDetour, LPVOID *ppOrigina
             UINT pos = FindHookEntry(pTarget);
             if (pos == INVALID_HOOK_POS)
             {
-                LPVOID pBuffer = AllocateBuffer(pTarget, g_pMinimumApplicationAddress, g_pMaximumApplicationAddress, g_dwAllocationGranularity);
+                LPVOID pBuffer = AllocateBuffer(pTarget);
                 if (pBuffer != NULL)
                 {
                     TRAMPOLINE ct;
 
-                    ct.pTarget = pTarget;
-                    ct.pDetour = pDetour;
+                    ct.pTarget     = pTarget;
+                    ct.pDetour     = pDetour;
                     ct.pTrampoline = pBuffer;
                     if (CreateTrampolineFunction(&ct))
                     {
@@ -560,7 +548,7 @@ MH_STATUS WINAPI MH_CreateHook(LPVOID pTarget, LPVOID pDetour, LPVOID *ppOrigina
                         if (pHook != NULL)
                         {
                             pHook->pTarget     = ct.pTarget;
-#ifdef _M_X64
+#if defined(_M_X64) || defined(__x86_64__)
                             pHook->pDetour     = ct.pRelay;
 #else
                             pHook->pDetour     = ct.pDetour;
@@ -835,8 +823,9 @@ MH_STATUS WINAPI MH_ApplyQueued(VOID)
 }
 
 //-------------------------------------------------------------------------
-MH_STATUS WINAPI MH_CreateHookApi(
-    LPCWSTR pszModule, LPCSTR pszProcName, LPVOID pDetour, LPVOID *ppOriginal)
+MH_STATUS WINAPI MH_CreateHookApiEx(
+    LPCWSTR pszModule, LPCSTR pszProcName, LPVOID pDetour,
+    LPVOID *ppOriginal, LPVOID *ppTarget)
 {
     HMODULE hModule;
     LPVOID  pTarget;
@@ -849,7 +838,17 @@ MH_STATUS WINAPI MH_CreateHookApi(
     if (pTarget == NULL)
         return MH_ERROR_FUNCTION_NOT_FOUND;
 
+    if(ppTarget != NULL)
+        *ppTarget = pTarget;
+
     return MH_CreateHook(pTarget, pDetour, ppOriginal);
+}
+
+//-------------------------------------------------------------------------
+MH_STATUS WINAPI MH_CreateHookApi(
+    LPCWSTR pszModule, LPCSTR pszProcName, LPVOID pDetour, LPVOID *ppOriginal)
+{
+   return MH_CreateHookApiEx(pszModule, pszProcName, pDetour, ppOriginal, NULL);
 }
 
 //-------------------------------------------------------------------------

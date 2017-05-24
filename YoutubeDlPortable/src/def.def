@@ -1,0 +1,2 @@
+EXPORTS
+SHGetSpecialFolderPathW=_Z27SHGetSpecialFolderPathWStubP6HWND__Pwii

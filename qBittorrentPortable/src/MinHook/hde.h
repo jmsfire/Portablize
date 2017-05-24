@@ -1,4 +1,4 @@
-﻿#ifdef _WIN64
+﻿#ifdef _WIN64//####
 /*
  * Hacker Disassembler Engine 64
  * Copyright (c) 2008-2009, Vyacheslav Patkov.
@@ -20,9 +20,9 @@
  * and change next line to:
  *   #include "pstdint.h"
  */
+#include <windows.h>
 
-#include "windows.h"
-
+// Integer types for HDE.
 typedef INT8   int8_t;
 typedef INT16  int16_t;
 typedef INT32  int32_t;
@@ -121,8 +121,7 @@ unsigned int hde64_disasm(const void *code, hde64s *hs);
 #endif
 
 #endif /* _HDE64_H_ */
-
-#else
+#else//####
 /*
  * Hacker Disassembler Engine 32
  * Copyright (c) 2006-2009, Vyacheslav Patkov.
@@ -144,9 +143,9 @@ unsigned int hde64_disasm(const void *code, hde64s *hs);
  * and change next line to:
  *   #include "pstdint.h"
  */
+#include <windows.h>
 
-#include "windows.h"
-
+// Integer types for HDE.
 typedef INT8   int8_t;
 typedef INT16  int16_t;
 typedef INT32  int32_t;
@@ -238,4 +237,5 @@ unsigned int hde32_disasm(const void *code, hde32s *hs);
 #endif
 
 #endif /* _HDE32_H_ */
-#endif
+
+#endif//####

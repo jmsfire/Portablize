@@ -48,7 +48,7 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
                     break;
             } while (pDelim > g_wBuf);
             if (pDelim >= g_wBuf+4 && pDelim <= g_wBuf+MAX_PATH-g_dwPathMargin &&
-                    (*pDelim = L'\0', SetCurrentDirectoryW(g_wBuf)) &&
+                    (pDelim[1] = L'\0', SetCurrentDirectoryW(g_wBuf)) &&
                     DisableThreadLibraryCalls(hInstDll))
                 if (const HANDLE hTimer = CreateWaitableTimerW(nullptr, FALSE, nullptr))
                 {
@@ -56,7 +56,10 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
                     liDueTime.QuadPart = 0;
                     const bool bOk = SetWaitableTimer(hTimer, &liDueTime, 0, TimerAPCProc, hInstDll, FALSE);
                     if (CloseHandle(hTimer) && bOk)
+                    {
+                        *pDelim = L'\0';
                         return TRUE;
+                    }
                 }
         }
     }

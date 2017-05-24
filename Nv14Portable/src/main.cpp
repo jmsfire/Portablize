@@ -7,7 +7,16 @@
 #define EXPORT //__declspec(dllexport)
 
 static constexpr const DWORD g_dwPathMargin = 84;        //"\Macromedia\Flash Player\macromedia.com\support\flashplayer\sys\#local\settings.sol`"
+static constexpr const LONG g_iKeyDummy = 0x80001000;
 static char g_cBuf[MAX_PATH+1];
+
+//-------------------------------------------------------------------------------------------------
+static inline bool FCompareMemoryA(const char *pBuf1, const char *pBuf2)
+{
+    while (*pBuf1 == *pBuf2 && *pBuf2)
+        ++pBuf1, ++pBuf2;
+    return *pBuf1 == *pBuf2;
+}
 
 //-------------------------------------------------------------------------------------------------
 static UINT WINAPI GetSystemDirectoryAStub(LPSTR lpBuffer, UINT)
@@ -18,9 +27,9 @@ static UINT WINAPI GetSystemDirectoryAStub(LPSTR lpBuffer, UINT)
 }
 
 //-------------------------------------------------------------------------------------------------
-EXPORT LONG WINAPI RegCloseKeyStub(HKEY hKey)
+EXPORT LONG WINAPI RegCloseKeyStub(HKEY)
 {
-    return RegCloseKey(hKey);
+    return ERROR_SUCCESS;
 }
 
 EXPORT LONG WINAPI RegCreateKeyAStub(HKEY, LPCSTR, PHKEY)
@@ -28,16 +37,29 @@ EXPORT LONG WINAPI RegCreateKeyAStub(HKEY, LPCSTR, PHKEY)
     return ERROR_ACCESS_DENIED;
 }
 
-EXPORT LONG WINAPI RegOpenKeyExAStub(HKEY, LPCSTR, DWORD, REGSAM, PHKEY)
+EXPORT LONG WINAPI RegOpenKeyExAStub(HKEY hKey, LPCSTR lpSubKey, DWORD, REGSAM, PHKEY phkResult)
 {
-    return ERROR_SUCCESS;
+    if (hKey == HKEY_CURRENT_USER && lpSubKey && FCompareMemoryA(lpSubKey, "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders"))
+    {
+        *phkResult = reinterpret_cast<HKEY>(g_iKeyDummy);
+        return ERROR_SUCCESS;
+    }
+    return ERROR_ACCESS_DENIED;
 }
 
-EXPORT LONG WINAPI RegQueryValueExAStub(HKEY, LPCSTR, LPDWORD, LPDWORD, /*LPBYTE*/char *lpData, LPDWORD)
+EXPORT LONG WINAPI RegQueryValueExAStub(HKEY hKey, LPCSTR lpValueName, LPDWORD, LPDWORD lpType, /*LPBYTE*/char *lpData, LPDWORD lpcbData)
 {
-    const char *pSrc = g_cBuf;
-    while ((*lpData++ = *pSrc++));
-    return ERROR_SUCCESS;
+    if (hKey == reinterpret_cast<HKEY>(g_iKeyDummy) && lpValueName && FCompareMemoryA(lpValueName, "AppData") && lpData)
+    {
+        if (lpType)
+            *lpType = REG_SZ;
+        const char *pSrc = g_cBuf;
+        while ((*lpData++ = *pSrc++));
+        if (lpcbData)
+            *lpcbData = pSrc-g_cBuf;
+        return ERROR_SUCCESS;
+    }
+    return ERROR_ACCESS_DENIED;
 }
 
 EXPORT LONG WINAPI RegSetValueAStub(HKEY, LPCSTR, DWORD, LPCSTR, DWORD)
@@ -55,6 +77,7 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
 {
     if (fdwReason == DLL_PROCESS_ATTACH)
     {
+        //MAX_PATH <= 1024
         constexpr const DWORD dwPatchSize = 1+sizeof(size_t);
         DWORD dwTemp = GetModuleFileNameA(nullptr, g_cBuf, MAX_PATH+1);
         if (dwTemp >= 6 && dwTemp < MAX_PATH)
