@@ -1,0 +1,4 @@
+EXPORTS
+SHGetMalloc=_Z15SHGetMallocStubPP7IMalloc@4
+SHGetPathFromIDListA=_Z24SHGetPathFromIDListAStubPK11_ITEMIDLISTPc@8
+SHGetSpecialFolderLocation=_Z30SHGetSpecialFolderLocationStubP6HWND__iPP11_ITEMIDLIST@12

@@ -11,6 +11,7 @@
 #define EXPORT //__declspec(dllexport)
 
 static constexpr const DWORD g_dwPathMargin = 77;        //"\qBittorrent\BT_backup\0123456789abcdefghijklmnopqrstuvwxyz????.fastresume.0`"
+static constexpr const DWORD g_dwPatchSize = 1+sizeof(size_t);
 static wchar_t g_wBuf[MAX_PATH+1];
 static SIZE_T g_szPathBytes;
 
@@ -26,6 +27,13 @@ static SIpfilter *g_pSIpFilter,
 static inline void FCopyMemoryW(wchar_t *pDst, const wchar_t *pSrc)
 {
     while ((*pDst++ = *pSrc++));
+}
+
+static inline void FCopyMemory(BYTE *pDst, const BYTE *pSrc)
+{
+    DWORD dwSize = g_dwPatchSize;
+    while (dwSize--)
+        *pDst++ = *pSrc++;
 }
 
 #ifdef _WIN64
@@ -79,6 +87,15 @@ static HRESULT WINAPI SHGetKnownFolderPathStub(REFKNOWNFOLDERID, DWORD, HANDLE, 
     return S_FALSE;
 }
 #endif
+
+static DWORD WINAPI GetTempPathWStub(DWORD, LPWSTR lpBuffer)
+{
+    const wchar_t *pSrc = g_wBuf;
+    while ((*lpBuffer++ = *pSrc++));
+    lpBuffer[-1] = L'\\';
+    *lpBuffer = L'\0';
+    return pSrc-g_wBuf;
+}
 
 //-------------------------------------------------------------------------------------------------
 static LONG WINAPI RegCreateKeyExWStub(HKEY, LPCWSTR, DWORD, LPWSTR, DWORD, REGSAM, LPSECURITY_ATTRIBUTES, PHKEY, LPDWORD)
@@ -175,12 +192,11 @@ static inline bool FCreateHook(T *const pTarget, T *const pDetour, T **const ppO
 //-------------------------------------------------------------------------------------------------
 static bool FPatch(BYTE *pAddress, size_t szOffset, void **const ppOriginal)
 {
-    constexpr const DWORD dwPatchSize = 1+sizeof(size_t);
-    const SIZE_T szLen = ppOriginal ? (pAddress -= dwPatchSize, dwPatchSize+2) : dwPatchSize;
+    const SIZE_T szLen = ppOriginal ? (pAddress -= g_dwPatchSize, g_dwPatchSize+2) : g_dwPatchSize;
     DWORD dwOldProtect;
     if (VirtualProtect(pAddress, szLen, PAGE_EXECUTE_READWRITE, &dwOldProtect))
     {
-        szOffset -= reinterpret_cast<size_t>(pAddress) + dwPatchSize;
+        szOffset -= reinterpret_cast<size_t>(pAddress) + g_dwPatchSize;
         const BYTE *pByte = static_cast<const BYTE*>(static_cast<const void*>(&szOffset));
         pAddress[0] = 0xE9;        //jump near
         pAddress[1] = pByte[0];
@@ -191,7 +207,7 @@ static bool FPatch(BYTE *pAddress, size_t szOffset, void **const ppOriginal)
         {
             pAddress[5] = 0xEB;        //jump short
             pAddress[6] = 0xF9;        //-7
-            *ppOriginal = pAddress+dwPatchSize+2;
+            *ppOriginal = pAddress+g_dwPatchSize+2;
         }
         DWORD dwTemp;
         if (VirtualProtect(pAddress, szLen, dwOldProtect, &dwTemp))
@@ -208,6 +224,9 @@ static inline bool FCreateHook(T1 *const pTarget, T2 *const pDetour, T1 **const 
 //-------------------------------------------------------------------------------------------------
 extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID)
 {
+#ifndef _WIN64
+    static BYTE btGetTempPathW[g_dwPatchSize];
+#endif
     if (fdwReason == DLL_PROCESS_ATTACH)
     {
         DWORD dwTemp = GetModuleFileNameW(nullptr, g_wBuf, MAX_PATH+1);
@@ -249,6 +268,9 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
                                             }
                                     }
                                 }
+#ifndef _WIN64
+                                FCopyMemory(btGetTempPathW, reinterpret_cast<BYTE*>(GetTempPathW));
+#endif
                                 if (HeapFree(hProcHeap, HEAP_NO_SERIALIZE, cFile) && bOk &&
                                         (pDelim[1] = L'\0', SetCurrentDirectoryW(g_wBuf)))
 #ifdef _WIN64
@@ -257,6 +279,7 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
                                         if (
                                                 FCreateHook(SHGetSpecialFolderPathW, SHGetSpecialFolderPathWStub) &&
                                                 FCreateHook(SHGetKnownFolderPath, SHGetKnownFolderPathStub) &&
+                                                FCreateHook(GetTempPathW, GetTempPathWStub) &&
                                                 FCreateHook(RegCreateKeyExW, RegCreateKeyExWStub) &&
                                                 (g_pSIpFilter == g_pSIpFilterEnd ||
                                                  (FCreateHook(WSASendTo, WSASendToStub, &WSASendToReal) &&
@@ -287,6 +310,21 @@ extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID
                 HeapFree(hProcHeap, HEAP_NO_SERIALIZE, g_pSIpFilter);
 #ifdef _WIN64
         MH_Uninitialize();
+#else
+        if (*btGetTempPathW)
+        {
+            BYTE *const pAddress = reinterpret_cast<BYTE*>(GetTempPathW);
+            DWORD dwOldProtect;
+            if (VirtualProtect(pAddress, g_dwPatchSize, PAGE_EXECUTE_READWRITE, &dwOldProtect))
+            {
+                pAddress[0] = btGetTempPathW[0];
+                pAddress[1] = btGetTempPathW[1];
+                pAddress[2] = btGetTempPathW[2];
+                pAddress[3] = btGetTempPathW[3];
+                DWORD dwTemp;
+                VirtualProtect(pAddress, g_dwPatchSize, dwOldProtect, &dwTemp);
+            }
+        }
 #endif
     }
     return FALSE;

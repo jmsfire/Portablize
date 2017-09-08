@@ -12,11 +12,11 @@ QMAKE_LFLAGS += -eDllEntryPoint
 } else {
 QMAKE_LFLAGS += -e_DllEntryPoint
 
+LIBS += -lkernel32 -lshell32
+
 DEF_FILE = def.def
 }
 QMAKE_CXXFLAGS += -Wpedantic
 QMAKE_CXXFLAGS += -Wzero-as-null-pointer-constant
-
-LIBS += -lkernel32 -ladvapi32
 
 SOURCES += main.cpp

@@ -5,7 +5,7 @@ x32 version:
 Put powrproz.dll and ipfilter.cfg to app folder;
 Patch "POWRPROF.dll" to "POWRPROZ.dll" in qbittorrent.exe (use hex-editor).
 
-Checked version: 3.3.12
+Checked version: 3.3.13
 
 Third-party (x64):
 MinHook v1.3.3 (https://www.codeproject.com/KB/winsdk/LibMinHook.aspx)
